@@ -31,7 +31,7 @@ def _check_input(tensor, shape, display_name, tf_name=None):
     assert tensor.op.type == 'Placeholder', \
         '{} is not a Placeholder.'.format(display_name)
 
-    _assert_tensor_shape(tensor, shape, 'Real Input')
+    _assert_tensor_shape(tensor, shape, display_name)
 
     if tf_name:
         assert tensor.name == tf_name, \
@@ -72,6 +72,7 @@ def test_model_inputs(model_inputs):
 def test_discriminator(discriminator, tf_module):
     with TmpMock(tf_module, 'variable_scope') as mock_variable_scope:
         image = tf.placeholder(tf.float32, [None, 28, 28, 3])
+		
 
         output, logits = discriminator(image)
         _assert_tensor_shape(output, [None, 1], 'Discriminator Training(reuse=false) output')
