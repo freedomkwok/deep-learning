@@ -1,0 +1,12 @@
+cd C:\Users\freed\havardclass\Udacity Nano\projects\dog-project
+activate aind-dog
+set KERAS_BACKEND=tensorflow
+python -c "from keras import backend"
+jupyter notebook dog_app.ipynb
+
+import tensorflow as tf
+tf.get
+python -m pip install
+
+from tensorflow.python.client import device_lib
+device_lib.list_local_devices()
