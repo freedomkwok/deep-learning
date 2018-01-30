@@ -1,0 +1,49 @@
+[
+  # First Batch
+  [
+    # Batch of Input
+    [[ 1  2], [ 7  8], [13 14]]
+    # Batch of targets
+    [[ 2  3], [ 8  9], [14 15]]
+  ]
+
+  # Second Batch
+  [
+    # Batch of Input
+    [[ 3  4], [ 9 10], [15 16]]
+    # Batch of targets
+    [[ 4  5], [10 11], [16 17]]
+  ]
+
+  # Third Batch
+  [
+    # Batch of Input
+    [[ 5  6], [11 12], [17 18]]
+    # Batch of targets
+    [[ 6  7], [12 13], [18  1]]
+  ]
+]
+
+	batches_size= 3
+	row_per_batch = 2
+	
+	    index batch_row_index			row  							col			 position in int_to_word
+	1 => 0 			  0 					0								0*col  		= 0
+															
+	2 => 0 			  0 					0								1*col 		= 1
+								
+	3 => 1(2*index)   0           		0   			   				0*col 		= 2
+	
+	4 => 1(2*index)   0(batch_row_index)	0*(row*batches_size*row_per_batch)		1*col	  	= 3
+	4 => 1(2*index)   1(batch_row_index)	0*(row*batches_size*row_per_batch)      0*col 		= 3
+	
+	5 => 1(2*index)   1(batch_row_index)	0*(row*batches_size*row_per_batch)      1*col 		= 4
+	5 => 2(2*index)   0(batch_row_index)	0*(row*batches_size*row_per_batch)      0*col 		= 4
+	
+	6 => 2(2*index)   0 			 		0*(row*batches_size*row_per_batch)		1 			= 5 
+	6 => 2(2*index)   1(batch_row_index)    0*(row*batches_size*row_per_batch)      0            = 5
+	
+	7 => 0(2*index)   0 			 		0*(row*batches_size*row_per_batch)		0 			= 6 
+	7 =>  2(2*index)   1(batch_row_index)    1*(row*batches_size*row_per_batch)     1            = 6
+	
+	8 => 0(2*index)   0					1*(batchrow+batch_row_len)		1*col		=7 
