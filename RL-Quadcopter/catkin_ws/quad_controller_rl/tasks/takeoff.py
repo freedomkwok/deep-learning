@@ -27,9 +27,13 @@ class Takeoff(BaseTask):
         # Task-specific parameters
         self.max_duration = 5.0  # secs
         self.target_z = 10.0  # target height (z position) to reach for successful takeoff
+        self.counter = 0
+        self.period = 20
 
     def reset(self):
         # Nothing to reset; just return initial condition
+        if (self.counter % self.period == 0):
+            print("\nTakeOff Reset")
         return Pose(
                 position=Point(0.0, 0.0, np.random.normal(0.5, 0.1)),  # drop off from a slight random height
                 orientation=Quaternion(0.0, 0.0, 0.0, 0.0),
@@ -39,6 +43,12 @@ class Takeoff(BaseTask):
             )
 
     def update(self, timestamp, pose, angular_velocity, linear_acceleration):
+        self.counter += 1
+        if(self.counter % self.period == 0):
+            print("\nTakeOff Update: time:{} Height:{}".format(timestamp, pose.position.z))
+            print("Pose:", pose.position.x, pose.position.y, pose.position.z, "\n")
+            print(pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w)
+
         # Prepare state vector (pose only; ignore angular_velocity, linear_acceleration)
         state = np.array([
                 pose.position.x, pose.position.y, pose.position.z,
@@ -47,7 +57,14 @@ class Takeoff(BaseTask):
         # Compute reward / penalty and check if this episode is complete
         done = False
         reward = -min(abs(self.target_z - pose.position.z), 20.0)  # reward = zero for matching target z, -ve as you go farther, upto -20
+        # reward = reward +min(-pose.position.x, -20.0)
+        # reward = reward + min(-pose.position.y, -20.0)
+
         if pose.position.z >= self.target_z:  # agent has crossed the target height
+            print("over pose.position.z")
+            reward += 10.0  # bonus reward
+            done = True
+        elif pose.position.x == 0 or pose.position.y == 0:
             reward += 10.0  # bonus reward
             done = True
         elif timestamp > self.max_duration:  # agent has run out of time
@@ -60,6 +77,8 @@ class Takeoff(BaseTask):
 
         # Convert to proper force command (a Wrench object) and return it
         if action is not None:
+            if (self.counter % self.period == 0):
+                print("TakeOff Action", action.flatten())
             action = np.clip(action.flatten(), self.action_space.low, self.action_space.high)  # flatten, clamp to action space limits
             return Wrench(
                     force=Vector3(action[0], action[1], action[2]),
