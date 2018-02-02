@@ -5,6 +5,7 @@ from gym import spaces
 from geometry_msgs.msg import Vector3, Point, Quaternion, Pose, Twist, Wrench
 from quad_controller_rl.tasks.base_task import BaseTask
 
+
 class Takeoff(BaseTask):
     """Simple task where the goal is to lift off the ground and reach a target height."""
 
@@ -14,7 +15,7 @@ class Takeoff(BaseTask):
         self.observation_space = spaces.Box(
             np.array([- cube_size / 2, - cube_size / 2,       0.0, -1.0, -1.0, -1.0, -1.0]),
             np.array([  cube_size / 2,   cube_size / 2, cube_size,  1.0,  1.0,  1.0,  1.0]))
-        print("Takeoff(): observation_space = {}".format(self.observation_space))  # [debug]
+        #print("Takeoff(): observation_space = {}".format(self.observation_space))  # [debug]
 
         # Action space: <force_x, .._y, .._z, torque_x, .._y, .._z>
         max_force = 25.0
@@ -22,18 +23,15 @@ class Takeoff(BaseTask):
         self.action_space = spaces.Box(
             np.array([-max_force, -max_force, -max_force, -max_torque, -max_torque, -max_torque]),
             np.array([ max_force,  max_force,  max_force,  max_torque,  max_torque,  max_torque]))
-        print("Takeoff(): action_space = {}".format(self.action_space))  # [debug]
+        #print("Takeoff(): action_space = {}".format(self.action_space))  # [debug]
 
         # Task-specific parameters
-        self.max_duration = 5.0  # secs
+        self.max_duration = 1.0  # secs
         self.target_z = 10.0  # target height (z position) to reach for successful takeoff
-        self.counter = 0
-        self.period = 20
 
     def reset(self):
         # Nothing to reset; just return initial condition
-        if (self.counter % self.period == 0):
-            print("\nTakeOff Reset")
+        print("reset")
         return Pose(
                 position=Point(0.0, 0.0, np.random.normal(0.5, 0.1)),  # drop off from a slight random height
                 orientation=Quaternion(0.0, 0.0, 0.0, 0.0),
@@ -43,11 +41,6 @@ class Takeoff(BaseTask):
             )
 
     def update(self, timestamp, pose, angular_velocity, linear_acceleration):
-        self.counter += 1
-        if(self.counter % self.period == 0):
-            print("\nTakeOff Update: time:{} Height:{}".format(timestamp, pose.position.z))
-            print("Pose:", pose.position.x, pose.position.y, pose.position.z, "\n")
-            print(pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w)
 
         # Prepare state vector (pose only; ignore angular_velocity, linear_acceleration)
         state = np.array([
@@ -57,14 +50,7 @@ class Takeoff(BaseTask):
         # Compute reward / penalty and check if this episode is complete
         done = False
         reward = -min(abs(self.target_z - pose.position.z), 20.0)  # reward = zero for matching target z, -ve as you go farther, upto -20
-        # reward = reward +min(-pose.position.x, -20.0)
-        # reward = reward + min(-pose.position.y, -20.0)
-
         if pose.position.z >= self.target_z:  # agent has crossed the target height
-            print("over pose.position.z")
-            reward += 10.0  # bonus reward
-            done = True
-        elif pose.position.x == 0 or pose.position.y == 0:
             reward += 10.0  # bonus reward
             done = True
         elif timestamp > self.max_duration:  # agent has run out of time
@@ -77,12 +63,10 @@ class Takeoff(BaseTask):
 
         # Convert to proper force command (a Wrench object) and return it
         if action is not None:
-            if (self.counter % self.period == 0):
-                print("TakeOff Action", action.flatten())
-            action = np.clip(action.flatten(), self.action_space.low, self.action_space.high)  # flatten, clamp to action space limits
+            action = np.clip(action.flatten(), self.action_space.low[0:3], self.action_space.high[0:3])  # flatten, clamp to action space limits
             return Wrench(
                     force=Vector3(action[0], action[1], action[2]),
-                    torque=Vector3(action[3], action[4], action[5])
+                    torque=Vector3(0.0, 0.0, 0.0)
                 ), done
         else:
             return Wrench(), done

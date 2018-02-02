@@ -1,6 +1,7 @@
 """Policy search agent."""
 
 import numpy as np
+import tensorflow as tf
 from quad_controller_rl.agents.base_agent import BaseAgent
 
 
@@ -28,8 +29,6 @@ class GredientPolicySearch(BaseAgent):
 
         # Episode variables
         self.reset_episode_vars()
-        self.counter = 0
-        self.period = 20
 
     def reset_episode_vars(self):
         self.last_state = None
@@ -39,11 +38,8 @@ class GredientPolicySearch(BaseAgent):
 
     def step(self, state, reward, done):
         # Transform state vector
-        self.counter += 1
         state = (state - self.task.observation_space.low) / self.state_range  # scale to [0.0, 1.0]
         state = state.reshape(1, -1)  # convert to row vector
-        if (self.counter % self.period == 0):
-            print("Reward:{} \nState:{}".format(reward, state))
 
         # Choose an action
         action = self.act(state)
@@ -65,7 +61,6 @@ class GredientPolicySearch(BaseAgent):
     def act(self, state):
         # Choose action based on given state and policy
         action = np.dot(state, self.w)  # simple linear policy
-        # print("act W:{} w.shape:{}".format(self.w, self.w.shape))
         # print(action)  # [debug: action vector]
         return action
 
@@ -81,8 +76,6 @@ class GredientPolicySearch(BaseAgent):
             self.noise_scale = min(2.0 * self.noise_scale, 3.2)
 
         self.w = self.w + self.noise_scale * np.random.normal(size=self.w.shape)  # equal noise in all directions
-        if (self.counter % self.period == 0):
-            print(
-                "RandomPolicySearch.learn(): count = {:4d}, score = {:7.3f} (best = {:7.3f}), noise_scale = {}".format(
-                    self.count, score, self.best_score, self.noise_scale))  # [debug]
-        # print("{} {}".format('weight', self.w.shape))  # [debug: policy parameters]
+        print("RandomPolicySearch.learn(): t = {:4d}, score = {:7.3f} (best = {:7.3f}), noise_scale = {}".format(
+            self.count, score, self.best_score, self.noise_scale))  # [debug]
+        # print(self.w)  # [debug: policy parameters]
