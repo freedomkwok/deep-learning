@@ -23,9 +23,13 @@ class Memory():
         idx = np.random.choice(np.arange(len(self.memory)),
                                size=batch_size,
                                replace=False)
-        return [self.memory[ii].state for ii in idx], [self.memory[ii].action for ii in idx], \
-               [self.memory[ii].reward for ii in idx], [self.memory[ii].next_state for ii in idx], \
-               [self.memory[ii].done for ii in idx]
+
+        return np.array([self.memory[ii].state for ii in idx])[:, 0, :], \
+            np.array([self.memory[ii].action for ii in idx])[:, 0, :], \
+            [self.memory[ii].reward for ii in idx], \
+            np.array([self.memory[ii].next_state for ii in idx])[:, 0, :], \
+            [self.memory[ii].done for ii in idx], \
+            [self.memory[ii].pi for ii in idx],
 
     def __len__(self):
         """Return the current size of internal memory."""

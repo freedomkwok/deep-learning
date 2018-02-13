@@ -8,7 +8,6 @@ from quad_controller_rl.agents.stackMemory import Memory
 import quad_controller_rl.util as util
 import pandas as pd
 import os
-import time
 
 class ActorNetwork(object):
     """
@@ -51,7 +50,7 @@ class ActorNetwork(object):
 
         # Combine the gradients here
         self.unnormalized_actor_gradients = tf.gradients(
-            self.scaled_out, self.network_params, -self.action_gradient)
+            self.scaled_out, self.network_params, -self.action_gradient, name='actor_gradient')
         self.actor_gradients = list(map(lambda x: tf.div(x, self.batch_size), self.unnormalized_actor_gradients))
 
         # Optimization Op
@@ -62,22 +61,24 @@ class ActorNetwork(object):
             self.network_params) + len(self.target_network_params)
 
     def create_actor_network(self):
-        print('actor create_actor_network start')
-        inputs = tf.placeholder(tf.float32, shape=[None, self.s_dim])
-        net = tf.layers.fully_connected(inputs, 400)
-        net = tf.layers.batch_normalization(net)
-        net = tf.nn.relu(net)
-        net = tf.contrib.layers.fully_connected(net, 300)
-        net = tf.layers.batch_normalization(net)
-        net = tf.nn.relu(net)
+        inputs = tflearn.input_data(shape=[None, self.s_dim])
+        net = tflearn.fully_connected(inputs, 8, name='actor_fully_connected_8')
+        net = tflearn.layers.normalization.batch_normalization(net, name='actor_batch_normalization_1')
+        net = tflearn.activations.relu(net)
+        net = tflearn.fully_connected(net, 6, name='actor_fully_connected_6')
+        net = tflearn.layers.normalization.batch_normalization(net, name='actor_batch_normalization_2')
+        net = tflearn.activations.relu(net)
+        net = tflearn.fully_connected(net, 4, name='actor_fully_connected_4')
+        net = tflearn.layers.normalization.batch_normalization(net, name='actor_batch_normalization_2')
+        net = tflearn.activations.relu(net)
+
         # Final layer weights are init to Uniform[-3e-3, 3e-3]
+        w_init = tflearn.initializations.uniform(minval=-0.003, maxval=0.003)
 
-        w_init = tf.random_uniform(minval=-0.003, maxval=0.003)
-        out = tf.contrib.fully_connected(
-            net, self.a_dim, activation='tanh', weights_init=w_init)
+        out = tflearn.fully_connected(
+            net, self.a_dim, activation='sigmoid', weights_init=w_init, name='actor_out')
 
-        #print(net.shape, 'check', out.shape, ' self.action_low ', self.action_low.shape, self.action_space.shape)
-        scaled_out = tf.divide(tf.subtract(out, self.action_low), self.action_space)
+        scaled_out = tf.add(tf.multiply(out, self.action_space), self.action_low)
         return inputs, out, scaled_out
 
     def train(self, inputs, a_gradient):
@@ -92,7 +93,6 @@ class ActorNetwork(object):
         })
 
     def predict_target(self, inputs):
-        print('actor predict_target')
         return self.sess.run(self.target_scaled_out, feed_dict={
             self.target_inputs: inputs
         })
@@ -152,14 +152,17 @@ class CriticNetwork(object):
     def create_critic_network(self):
         inputs = tflearn.input_data(shape=[None, self.s_dim])
         action = tflearn.input_data(shape=[None, self.a_dim])
-        net = tflearn.fully_connected(inputs, 400)
-        net = tflearn.layers.normalization.batch_normalization(net)
+        net = tflearn.fully_connected(inputs, 4, name='critic_fully_connected_4')
+        net = tflearn.layers.normalization.batch_normalization(net, name='critic_batch_normalization_1')
+        net = tflearn.activations.relu(net)
+        net = tflearn.fully_connected(net, 3, name='critic_fully_connected_3')
+        net = tflearn.layers.normalization.batch_normalization(net, name='critic_batch_normalization_1')
         net = tflearn.activations.relu(net)
 
         # Add the action tensor in the 2nd hidden layer
         # Use two temp layers to get the corresponding weights and biases
-        t1 = tflearn.fully_connected(net, 300)
-        t2 = tflearn.fully_connected(action, 300)
+        t1 = tflearn.fully_connected(net, 3, name='t1_fully_connected')
+        t2 = tflearn.fully_connected(action, 3, name='t2_fully_connected')
 
         net = tflearn.activation(
             tf.matmul(net, t1.W) + tf.matmul(action, t2.W) + t2.b, activation='relu')
@@ -167,7 +170,7 @@ class CriticNetwork(object):
         # linear layer connected to 1 output representing Q(s,a)
         # Weights are init to Uniform[-3e-3, 3e-3]
         w_init = tflearn.initializations.uniform(minval=-0.003, maxval=0.003)
-        out = tflearn.fully_connected(net, 1, weights_init=w_init)
+        out = tflearn.fully_connected(net, 1, weights_init=w_init, name='critic_out')
         return inputs, action, out
 
     def train(self, inputs, action, predicted_q_value):
@@ -198,22 +201,39 @@ class CriticNetwork(object):
     def update_target_network(self):
         self.sess.run(self.update_target_network_params)
 
+class OrnsteinUhlenbeckActionNoise:
+    def __init__(self, mu, sigma=0.3, theta=.15, dt=1e-2, x0=None):
+        self.mu = mu if mu is not None else np.zeros(1)
+        self.theta = theta
+        self.sigma = sigma
+        self.state = np.ones(1) * self.mu
+        self.reset()
+
+    def sample(self):
+        x = self.state
+        dx = self.theta * (self.mu - x) + self.sigma * np.random.randn(len(x))
+        self.state = x + dx
+        return self.state
+
+    def reset(self):
+        self.state = self.mu
+
 class GredientPolicySearch(BaseAgent):
     """Sample agent that searches for optimal policy randomly."""
 
     def __init__(self, task):
         # Task (environment) information
         self.task = task  # should contain observation_space and action_space
-        self.state_size = np.prod(self.task.observation_space.shape)
-        self.state_range = self.task.observation_space.high - self.task.observation_space.low
-        self.action_size = np.prod(self.task.action_space.shape)
-        self.action_range = self.task.action_space.high - self.task.action_space.low
+        self.state_size = 1# np.prod(self.task.observation_space.shape)
+        self.state_range = (self.task.observation_space.high - self.task.observation_space.low)[2:3]
+        self.action_size = 1# np.prod(self.task.action_space.shape)
+        self.action_range = (self.task.action_space.high - self.task.action_space.low)[2:3]
 
         # Policy parameters
-        self.w = np.random.normal(
-            size=(self.state_size, self.action_size),  # weights for simple linear policy: state_space x action_space
-            scale=(self.action_range / (2 * self.state_size)).reshape(1,
-                                                                      -1))  # start producing actions in a decent range
+        # self.w = np.random.normal(
+        #     size=(self.state_size, self.action_size),  # weights for simple linear policy: state_space x action_space
+        #     scale=(self.action_range / (2 * self.state_size)).reshape(1,
+        #                                                               -1))  # start producing actions in a decent range
 
         self.stats_filename = os.path.join(
             util.get_param('out'),
@@ -225,6 +245,8 @@ class GredientPolicySearch(BaseAgent):
         self.best_score = -np.inf
         self.noise_scale = 0.1
 
+        self.actor_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(self.action_size))
+
         # Episode variables
         self.reset_episode_vars()
         self.actor_learning_rate = 0.0001
@@ -233,10 +255,13 @@ class GredientPolicySearch(BaseAgent):
         self.buffer_size = 1000000
         self.critic_learning_rate = 0.001
         self.gamma = 0.9
+        self.episode_num = 0;
 
-        self.sess = tf.Session()
         self.memory = Memory(self.buffer_size)
-        self.actor = ActorNetwork(self.sess, self.state_size, self.action_size, self.task.action_space.low, \
+        self.checkpoint = '/home/robond/catkin_ws/src/RL-Quadcopter/quad_controller_rl/src/checkpoints/actor_critic.ckpt'
+        self.sess = tf.Session()
+        self.savor = tf.train.Saver()
+        self.actor = ActorNetwork(self.sess, self.state_size, self.action_size, self.task.action_space.low[2:3], \
                                   self.action_range, self.actor_learning_rate, self.tau, self.mini_batch_size)
 
 
@@ -261,9 +286,15 @@ class GredientPolicySearch(BaseAgent):
         self.total_reward = 0.0
         self.count = 0
 
+    def postprocess_action(self, action):
+        complete_action = np.zeros(self.task.action_space.shape)  # shape: (6,)
+        complete_action[2:3] = action  # linear force only
+        return complete_action
+
     def step(self, state, reward, done, pi):
         # Transform state vector
-        state = (state - self.task.observation_space.low) / self.state_range  # scale to [0.0, 1.0]
+        old_height = state[2:3]
+        state = (old_height - self.task.observation_space.low[2:3]) / self.state_range  # scale to [0.0, 1.0]
         state = state.reshape(1, -1)  # convert to row vector
 
         ep_reward = 0
@@ -279,9 +310,7 @@ class GredientPolicySearch(BaseAgent):
             self.count += 1
 
         if len(self.memory) > self.mini_batch_size:
-            start_time = time.time()
-            print('start training', start_time)
-            s_batch, a_batch, r_batch, s2_batch, d_batch = self.memory.sample(self.mini_batch_size)
+            s_batch, a_batch, r_batch, s2_batch, d_batch, pi_batch = self.memory.sample(self.mini_batch_size)
 
             target_q = self.critic.predict_target(  # critic create feedfoward
                 s2_batch, self.actor.predict_target(s2_batch))  # actor create feedforward
@@ -307,38 +336,27 @@ class GredientPolicySearch(BaseAgent):
             # Update target networks
             self.actor.update_target_network()
             self.critic.update_target_network()
-            now = time.time()
-            print('finish training', now, "%s seconds"%(now - start_time))
 
             # Learn, if at end of episode
         if done:
+            print('reward', self.total_reward)
+            print("height", old_height)
             self.write_stats([self.episode_num, self.total_reward])
             self.episode_num += 1
-            self.learn()
             self.reset_episode_vars()
 
         self.last_state = state
         self.last_action = action
-        return action
+
+        final_action = self.actor.predict(state)
+        return self.postprocess_action(final_action)
 
     def act(self, state):
         # Choose action based on given state and policy
-        action = np.dot(state, self.w)  # simple linear policy
-        # print(action)  # [debug: action vector]
-        return action
+        # action = np.dot(state, self.w)  # simple linear policy
+        # print(state.shape, action.shape)
+        # return action
 
-    def learn(self):
-        # Learn by random policy search, using a reward-based score
-        score = self.total_reward / float(self.count) if self.count else 0.0
-        if score > self.best_score:
-            self.best_score = score
-            self.best_w = self.w
-            self.noise_scale = max(0.5 * self.noise_scale, 0.01)
-        else:
-            self.w = self.best_w
-            self.noise_scale = min(2.0 * self.noise_scale, 3.2)
-
-        self.w = self.w + self.noise_scale * np.random.normal(size=self.w.shape)  # equal noise in all directions
-        print("RandomPolicySearch.learn(): t = {:4d}, score = {:7.3f} (best = {:7.3f}), noise_scale = {}".format(
-            self.count, score, self.best_score, self.noise_scale))  # [debug]
-        # print(self.w)  # [debug: policy parameters]
+        action = self.actor.predict(state)
+        nosie = self.actor_noise.sample()
+        return action + nosie
