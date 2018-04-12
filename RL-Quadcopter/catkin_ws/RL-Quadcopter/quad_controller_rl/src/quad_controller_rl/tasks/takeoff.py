@@ -27,19 +27,19 @@ class Takeoff(BaseTask):
         self.target_z = 10.0  # target height (z position) to reach for successful takeoff
 
         self.max_duration = 5.0  # secs
-        self.max_error_position = 8.0  # distance units
+        self.max_error_position = 9  # distance units
         self.target_position = np.array([0.0, 0.0, 10.0])  # target position to hover at
-        self.weight_position = 0.5
+        self.weight_position = 0.99
         self.target_orientation = np.array([0.0, 0.0, 0.0, 1.0])  # target orientation quaternion (upright)
         self.weight_orientation = 0.3
-        self.target_velocity = np.array([0.0, 0.0, 0.0])  # target velocity (ideally should stay in place)
-        self.weight_velocity = 0.2
+        self.target_velocity = np.array([0.0, 0.0, 4.0])  # target velocity (ideally should stay in place)
+        self.weight_velocity = 0.01
 
     def reset(self):
         p = self.target_position + np.random.normal(0.5, 0.1, size=3)
         return Pose(
                 position=Point(*p),  # drop off from a slight random height np.random.normal(0.5, 0.1)
-                orientation=Quaternion(0.0, 0.0, 0.0, 1.0)
+                orientation=Quaternion(0.0, 0.0, 0.0, 0.0)
             ), Twist(
                 linear=Vector3(0.0, 0.0, 0.0),
                 angular=Vector3(0.0, 0.0, 0.0)
@@ -51,17 +51,20 @@ class Takeoff(BaseTask):
                 pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w])
 
         done = False
-        pi = abs(self.target_z - pose.position.z); ## for better sorting
-        reward = -min(abs(pi), 20.0)  # reward = zero for matching target z, -ve as you go farther, upto -20
+        position = np.sum(np.abs(self.target_position - np.array([pose.position.x, pose.position.y,
+                                                                       pose.position.z]))) ## for better sorting
+        volocity = np.sum(np.abs(self.target_velocity - np.array([angular_velocity.x, angular_velocity.y,
+                                                                  angular_velocity.z])))  ## for better sorting
+        reward = -min(position, self.max_error_position) * self.weight_position - (min(volocity, 5) * self.weight_velocity) # reward = zero for matching target z, -ve as you go farther, upto -20
 
-        if pi >= self.max_error_position:  # agent has crossed the target height
+        if position >= self.max_error_position:  # agent has crossed the target height
             reward -= 50.0  # bonus reward
             done = True
         elif timestamp > self.max_duration:  # agent has run out of time
             reward += 50.0  # extra penalty
             done = True
 
-        action = self.agent.step(state, reward, done, pi)  # note: action = <force; torque> vector
+        action = self.agent.step(state, reward, done)  # note: action = <force; torque> vector
 
         if done:
             print("action", action[2:3])

@@ -101,9 +101,7 @@ class Critic:
         action_gradients = K.gradients(Q_values, actions)
 
         # Define an additional function to fetch action gradients (to be used by actor model)
-        self.get_action_gradients = K.function(
-            inputs=[*self.model.input, K.learning_phase()],
-            outputs=action_gradients)
+        self.get_action_gradients = K.function(inputs=[*self.model.input, K.learning_phase()], outputs=action_gradients)
 
 class DDPG(BaseAgent):
     def __init__(self, task):
@@ -121,19 +119,19 @@ class DDPG(BaseAgent):
         # Episode variables
         self.reset_episode_vars()
         self.actor_learning_rate = 0.0001
-        self.tau = 0.98
+        self.tau = 0.99
         self.mini_batch_size = 64
         self.buffer_size = 100000
         self.critic_learning_rate = 0.001
-        self.gamma = 0.9
+        self.gamma = 0.88
         self.episode = 0
 
         # Load/save parameters
-        self.load_weights = True  # try to load weights from previously saved models
+        self.load_weights = False  # try to load weights from previously saved models
         self.save_weights_every = 50  # save weights every n episodes, None to disable
         self.model_dir = util.get_param(
             'out')  # you can use a separate subdirectory for each task and/or neural net architecture
-        self.model_name = "my-model2"
+        self.model_name = "my-model4"  #my-model3
         self.model_ext = ".h5"
         if self.load_weights or self.save_weights_every:
             self.actor_filename = os.path.join(self.model_dir,
@@ -190,7 +188,7 @@ class DDPG(BaseAgent):
         complete_action[2:3] = action  # linear force only
         return complete_action
 
-    def step(self, state, reward, done, pi):
+    def step(self, state, reward, done):
         # Transform state vector
         old_height = state[2:3]
         state = (old_height - self.space_low) / self.state_size  # scale to [0.0, 1.0]
